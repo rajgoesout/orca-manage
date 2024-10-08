@@ -2,6 +2,8 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, Mint, TokenAccount};
 use whirlpool_cpi::{self, state::*, program::Whirlpool as WhirlpoolProgram};
 
+use crate::Rebalance;
+
 #[derive(Accounts)]
 pub struct ProxyClosePosition<'info> {
   pub whirlpool_program: Program<'info, WhirlpoolProgram>,

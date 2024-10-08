@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 use whirlpool_cpi::{self, program::Whirlpool as WhirlpoolProgram, state::*};
 
-use crate::Vault;
+use crate::{Rebalance, Vault};
 
 #[derive(Accounts)]
 pub struct ProxyOpenPosition<'info> {

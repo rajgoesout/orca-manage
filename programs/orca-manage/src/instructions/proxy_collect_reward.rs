@@ -2,6 +2,8 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount};
 use whirlpool_cpi::{self, program::Whirlpool as WhirlpoolProgram, state::*};
 
+use crate::Rebalance;
+
 #[derive(Accounts)]
 #[instruction(reward_index: u8)]
 pub struct ProxyCollectReward<'info> {
@@ -31,7 +33,7 @@ pub struct ProxyCollectReward<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handler(ctx: Context<ProxyCollectReward>, reward_index: u8) -> Result<()> {
+pub fn collect_reward_handler(ctx: Context<ProxyCollectReward>, reward_index: u8) -> Result<()> {
     let cpi_program = ctx.accounts.whirlpool_program.to_account_info();
 
     let cpi_accounts = whirlpool_cpi::cpi::accounts::CollectReward {

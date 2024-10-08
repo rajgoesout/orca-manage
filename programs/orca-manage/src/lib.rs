@@ -34,8 +34,6 @@ use anchor_spl::{
 // use whirlpool_cpi::program::Whirlpool;
 use whirlpool_cpi::{self, program::Whirlpool as WhirlpoolProgram, state::*};
 
-// use proxy_open_position::ProxyOpenPosition;
-
 pub mod instructions;
 use instructions::proxy_open_position::*;
 
@@ -53,7 +51,7 @@ pub mod liquidity_vault {
     }
 
     pub fn deposit(
-        ctx: Context<ProxyOpenPosition>,
+        ctx: Context<Deposit>,
         amount: u64,
         tick_lower_index: i32,
         tick_upper_index: i32,
@@ -82,13 +80,13 @@ pub mod liquidity_vault {
         vault.total_lp_tokens += amount;
 
         // not needed if user already has lp tokens (open position)
-        open_position_handler(ctx, tick_lower_index, tick_upper_index)?;
+        // open_position_handler(ctx, tick_lower_index, tick_upper_index)?;
 
         Ok(())
     }
 
     pub fn rebalance(ctx: Context<Rebalance>, min_price: u64, max_price: u64) -> Result<()> {
-        let vault = &mut ctx.accounts.vault;
+        // let vault = &mut ctx.accounts.vault;
         // // Load the existing whirlpool
         // let whirlpool = get_whirlpool(
         //     ctx.accounts.whirlpool_program.clone(),
@@ -107,8 +105,95 @@ pub mod liquidity_vault {
         //     max_price,
         //     remove_result.remaining_lp_tokens,
         // )?;
+
+        rebalance_handler(ctx)?;
         Ok(())
     }
+}
+
+pub fn rebalance_handler(ctx: Context<Rebalance>) -> Result<()> {
+    // close position
+    let cpi_program = ctx.accounts.whirlpool_program.to_account_info();
+
+    let cpi_accounts_close_position = whirlpool_cpi::cpi::accounts::ClosePosition {
+        position_authority: ctx.accounts.position_authority.to_account_info(),
+        receiver: ctx.accounts.receiver.to_account_info(),
+        position: ctx.accounts.position.to_account_info(),
+        position_mint: ctx.accounts.position_mint.to_account_info(),
+        position_token_account: ctx.accounts.position_token_account.to_account_info(),
+        token_program: ctx.accounts.token_program.to_account_info(),
+    };
+
+    let cpi_ctx_close_position = CpiContext::new(cpi_program.clone(), cpi_accounts_close_position);
+
+    // execute CPI
+    msg!("CPI: whirlpool close_position instruction");
+    whirlpool_cpi::cpi::close_position(cpi_ctx_close_position)?;
+
+    // collect reward
+    let reward_index = 0;
+    let cpi_accounts_collect_reward = whirlpool_cpi::cpi::accounts::CollectReward {
+        whirlpool: ctx.accounts.whirlpool.to_account_info(),
+        position_authority: ctx.accounts.position_authority.to_account_info(),
+        position: ctx.accounts.position.to_account_info(),
+        position_token_account: ctx.accounts.position_token_account.to_account_info(),
+        reward_owner_account: ctx.accounts.reward_owner_account.to_account_info(),
+        reward_vault: ctx.accounts.reward_vault.to_account_info(),
+        token_program: ctx.accounts.token_program.to_account_info(),
+    };
+
+    let cpi_ctx_collect_reward = CpiContext::new(cpi_program.clone(), cpi_accounts_collect_reward);
+
+    // execute CPI
+    msg!("CPI: whirlpool collect_reward instruction");
+    whirlpool_cpi::cpi::collect_reward(cpi_ctx_collect_reward, reward_index)?;
+
+    // collect fees
+    let cpi_accounts_collect_fees = whirlpool_cpi::cpi::accounts::CollectFees {
+        whirlpool: ctx.accounts.whirlpool.to_account_info(),
+        position_authority: ctx.accounts.position_authority.to_account_info(),
+        position: ctx.accounts.position.to_account_info(),
+        position_token_account: ctx.accounts.position_token_account.to_account_info(),
+        token_owner_account_a: ctx.accounts.token_owner_account_a.to_account_info(),
+        token_vault_a: ctx.accounts.token_vault_a.to_account_info(),
+        token_owner_account_b: ctx.accounts.token_owner_account_b.to_account_info(),
+        token_vault_b: ctx.accounts.token_vault_b.to_account_info(),
+        token_program: ctx.accounts.token_program.to_account_info(),
+    };
+
+    let cpi_ctx_collect_fees = CpiContext::new(cpi_program.clone(), cpi_accounts_collect_fees);
+
+    // execute CPI
+    msg!("CPI: whirlpool collect_fees instruction");
+    whirlpool_cpi::cpi::collect_fees(cpi_ctx_collect_fees)?;
+
+    // open position
+    let tick_lower_index = 0;
+    let tick_upper_index = 10;
+    let cpi_accounts_open_position = whirlpool_cpi::cpi::accounts::OpenPosition {
+        funder: ctx.accounts.funder.to_account_info(),
+        owner: ctx.accounts.owner.to_account_info(),
+        position: ctx.accounts.position.to_account_info(),
+        position_mint: ctx.accounts.position_mint.to_account_info(),
+        position_token_account: ctx.accounts.position_token_account.to_account_info(),
+        whirlpool: ctx.accounts.whirlpool.to_account_info(),
+        token_program: ctx.accounts.token_program.to_account_info(),
+        system_program: ctx.accounts.system_program.to_account_info(),
+        rent: ctx.accounts.rent.to_account_info(),
+        associated_token_program: ctx.accounts.associated_token_program.to_account_info(),
+    };
+
+    let cpi_ctx_open_position = CpiContext::new(cpi_program.clone(), cpi_accounts_open_position);
+
+    // execute CPI
+    msg!("CPI: whirlpool open_position instruction");
+    whirlpool_cpi::cpi::open_position(
+        cpi_ctx_open_position,
+        whirlpool_cpi::state::OpenPositionBumps { position_bump: 0 }, // passed bump is no longer used
+        tick_lower_index,
+        tick_upper_index,
+    )?;
+    Ok(())
 }
 
 #[derive(Accounts)]
@@ -254,7 +339,6 @@ pub struct Rebalance<'info> {
     // pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
     pub associated_token_program: Program<'info, AssociatedToken>,
-
     // #[account(mut)]
     // pub vault: Account<'info, Vault>,
     // #[account(mut)]
